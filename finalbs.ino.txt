@@ -1,0 +1,124 @@
+/*
+ *  This sketch sends a message to a TCP server
+ *
+ */
+#include <RF24Network.h>
+#include <RF24.h>
+
+#include <WiFi.h>
+#include <WiFiMulti.h>
+#include <SPI.h>
+#include <PubSubClient.h>
+WiFiMulti WiFiMulti;
+char ssid[] = "CSR_IOT_LAB";      //  your network SSID (name)
+char pass[] = "csr10t1ab1369";             // your network password
+char server[] = "172.18.22.9"; // MQTT Host (taken from Bluemix dashboard)
+int port = 1886;
+
+String topicName = String("vjti/csriot/lab3/bstation"); //Input your topic name here
+WiFiClient wifiClient;
+PubSubClient client(server, port, 0 , wifiClient);
+
+RF24 radio(32, 33);               // nRF24L01 (CE,CSN)
+RF24Network network(radio);      // Include the radio in the network
+const uint16_t this_node = 00;   // Address of our node in Octal format ( 04,031, etc)
+const uint16_t node01 = 01;    // Address of the other node in Octal format
+const uint16_t node02 = 02;
+int val;
+char msg[18] = "Motion detected 0";
+char txNum = '0';
+
+void setup()
+
+{
+    SPI.begin();
+    Serial.begin(115200);
+    radio.begin();
+    network.begin(90, this_node); //(channel, node address)
+    radio.setDataRate(RF24_2MBPS);
+    delay(10);
+    
+
+    // We start by connecting to a WiFi network
+    WiFiMulti.addAP("CSR_IOT_LAB", "csr10t1ab1369");
+
+    Serial.println();
+    Serial.println();
+    Serial.print("Waiting for WiFi... ");
+
+    while(WiFiMulti.run() != WL_CONNECTED) {
+        Serial.print(".");
+        delay(500);
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+
+    delay(500);
+}
+
+
+void loop()
+{
+
+
+
+    if (!client.connected()) {
+  reconnect();
+ }
+ client.loop();
+}
+
+void reconnect() {
+ // Loop until we're reconnected
+ //while (!client.connected()) {
+ Serial.print("Attempting MQTT connection...");
+ // Attempt to connect
+ client.connect("Gateway-ESP32", "sparo", "sparo123");  //Input Your Username & Password
+ if (client.connected()) {
+  char topicStr[28];
+  topicName.toCharArray(topicStr,28);
+  Serial.println("connected");
+  // ... and subscribe to topic
+
+  client.subscribe(topicStr);
+  char s[16]="Motion Detected";
+
+network.update();
+  //===== Receiving =====//
+  while ( network.available() ) {     // Is there any incoming data?
+    RF24NetworkHeader header;
+    //unsigned long incomingData;
+ 
+    network.read(header, &val, sizeof(val)); // Read the incoming data
+    if (header.from_node == 1) {    // If data comes from Node 02
+      //myservo.write(incomingData);  // tell servo to go to a particular angle
+      Serial.println("From node 1");
+      RF24NetworkHeader header2(node01);     // (Address where the data is going)
+      //updateMessage();
+      if(val==1)
+      {
+        client.publish(topicStr,s); 
+        Serial.println("published"); 
+      }
+      //bool ok = network.write(header2, &msg, sizeof(msg)); // Send the data
+
+    }
+    if (header.from_node == 2) {    // If data comes from Node 012
+      //digitalWrite(led, !incomingData);  // Turn on or off the LED 02
+      Serial.println("From node 2");
+    }
+  }
+  
+ // client.publish(topicStr,s);
+ } else{
+  Serial.print("failed, rc=");
+  Serial.print(client.state());
+  Serial.println(" try again in 5 seconds");
+  // Wait 5 seconds before retrying
+  delay(5000);
+  }
+ //}
+}
